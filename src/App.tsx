@@ -37,15 +37,30 @@ type BotConfig = {
 // --- Default Configuration ---
 const DEFAULT_CONFIG: BotConfig = {
   name: "HealthBot",
-  themeColor: "blue",
-  botIcon: "bot",
-  systemPrompt: "You are a health chatbot that provides tailored messages to users. \n\nIMPORTANT: You can present clickable options to the user. To do this, end your message with the options separated by a pipe symbol '|' inside curly braces '{}'. \nExample: 'Would you like to know about flu or mental health? {Flue | Mental health}'\n\nAlways keep your responses concise and friendly.",
+  themeColor: "emerald",
+  botIcon: "brain",
+  systemPrompt: `You are a helpful health assistant that provides tailored messages to users. Your goal is to gather information before giving advice.
+
+  RESPONSE GUIDELINES:
+  1. **Greeting:** If the user says "Hi" or "Start", welcome them and ask how they are doing today. 
+
+  2. **Based on what they reply to the greetings, ALWAYS end this specific message with: {Flu Info | Mental Health | General Advice}
+  
+  2. **Drill Down:** If the user picks a topic (e.g., "Flu Info"), give a brief summary. Then, ask if they want Prevention tips or Symptoms. End that message with: {Prevention Tips | Symptoms | Vaccine Locations}
+  
+  3. **Open-Ended:** If the user asks a specific question like "Why does my head hurt?", just answer normally with text. DO NOT use curly braces/buttons for complex questions.
+  
+  4. **Ending:** If the conversation seems over, ask if they need anything else. End with: {No, I'm good | Ask another question}
+  
+  FORMATTING RULE:
+  Only use the {Option A | Option B} format when you want the user to click a button. Otherwise, just speak plain text.`,
   knowledgeBase: "You will only provide responses based on the user's health concerns and the provided knowledge base.",
   provider: 'gemini', 
   model: 'gemini-2.5-flash', 
   // SECURE FIX: This reads the key from your local .env file.
   // When you run 'npm run deploy', it bakes the key into the website without showing it in the source code.
   // NOTE: Uncomment the line below when running locally in Vite!
+  // IMPORTANT: LOCALLY, UNCOMMENT THE LINE BELOW TO READ FROM .ENV
   apiKey: import.meta.env.VITE_API_KEY || "", 
   googleFormLink: "https://docs.google.com/forms/d/e/1FAIpQLSdZePJdg8y8lxpiOctjuYycFUX3Iz_Ge1spdjIsgVCJZnx_gA/viewform?usp=pp_url&entry.50030800=user&entry.2131352910=bot&entry.132734065=ID" 
 };
@@ -269,10 +284,12 @@ export default function ChatbotBuilder() {
   };
 
   const generateResponse = async (history: Message[], userMessage: string) => {
-    // FOR LOCAL DEV: Uncomment the line below to use .env
-    // const envKey = import.meta.env.VITE_API_KEY;
-    const envKey = ""; 
-    const finalKey = (envKey && envKey.length > 0) ? envKey : config.apiKey;
+    // PRIORITIZE .ENV KEY, FALLBACK TO CONFIG KEY
+    const envKey = import.meta.env.VITE_API_KEY || "";
+    
+    // Fix: Use logical OR to pick the key that exists. 
+    // If envKey is empty string (falsy), it picks config.apiKey.
+    const finalKey = envKey || config.apiKey;
 
     if (!finalKey) return "⚠️ Error: Please enter a valid API Key.";
     
