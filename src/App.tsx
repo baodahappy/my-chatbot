@@ -43,8 +43,11 @@ const DEFAULT_CONFIG: BotConfig = {
   knowledgeBase: "You will only provide responses based on the user's health concerns and the provided knowledge base.",
   provider: 'gemini', 
   model: 'gemini-2.5-flash', 
-  // ... inside DEFAULT_CONFIG
-  apiKey: import.meta.env.VITE_API_KEY || "",
+  // SECURE FIX: This reads the key from your local .env file.
+  // When you run 'npm run deploy', it bakes the key into the website without showing it in the source code.
+  // NOTE: Uncomment the line below when running locally in Vite!
+  // apiKey: import.meta.env.VITE_API_KEY || "", 
+  apiKey: "", 
   googleFormLink: "https://docs.google.com/forms/d/e/1FAIpQLSdZePJdg8y8lxpiOctjuYycFUX3Iz_Ge1spdjIsgVCJZnx_gA/viewform?usp=pp_url&entry.50030800=user&entry.2131352910=bot&entry.132734065=ID" 
 };
 
@@ -87,16 +90,13 @@ const BotAvatar = ({ icon, className }: { icon: string, className?: string }) =>
 };
 
 // --- Helper: Parse Options from Message ---
-// Looks for {Option 1 | Option 2} at the end of the string
 const parseBotMessage = (content: string) => {
   const optionRegex = /\{([^{}]+)\}$/; 
   const match = content.match(optionRegex);
   
   if (match) {
     const optionsStr = match[1];
-    // Split by pipe, trim whitespace
     const options = optionsStr.split('|').map(o => o.trim());
-    // Remove the options syntax from the display text
     const cleanContent = content.replace(optionRegex, '').trim();
     return { cleanContent, options };
   }
@@ -175,14 +175,19 @@ export default function ChatbotBuilder() {
   };
 
   const checkAvailableModels = async () => {
-    if (!config.apiKey) {
+    // FOR LOCAL DEV: Uncomment the line below to use .env
+    // const envKey = import.meta.env.VITE_API_KEY;
+    const envKey = ""; // Placeholder for preview environment
+    const currentKey = config.apiKey || envKey;
+
+    if (!currentKey) {
       setKeyStatus({msg: "⚠️ Paste an API Key first.", type: 'error'});
       return;
     }
     setKeyStatus({msg: "Checking API Key...", type: 'loading'});
     try {
       if (config.provider === 'gemini') {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${config.apiKey}`);
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${currentKey}`);
         const data = await response.json();
         if (data.error) {
            setKeyStatus({msg: `❌ Key Error: ${data.error.message}`, type: 'error'});
@@ -265,9 +270,15 @@ export default function ChatbotBuilder() {
   };
 
   const generateResponse = async (history: Message[], userMessage: string) => {
-    if (!config.apiKey) return "⚠️ Error: Please enter a valid API Key.";
+    // FOR LOCAL DEV: Uncomment the line below to use .env
+    // const envKey = import.meta.env.VITE_API_KEY;
+    const envKey = ""; 
+    const finalKey = (envKey && envKey.length > 0) ? envKey : config.apiKey;
+
+    if (!finalKey) return "⚠️ Error: Please enter a valid API Key.";
+    
     const fullSystemPrompt = `${config.systemPrompt}\nCONTEXT/KNOWLEDGE BASE:\n${config.knowledgeBase}`;
-    const cleanKey = config.apiKey.trim();
+    const cleanKey = finalKey.trim();
 
     try {
       if (config.provider === 'openai') {
@@ -303,9 +314,6 @@ export default function ChatbotBuilder() {
     if (!textOverride) setInput("");
     setIsLoading(true);
     
-    // We pass 'messages' (old history) + new message to context context if needed, 
-    // but typically we rely on the backend or just append the new user message to history for the API call.
-    // Here we will just use the previous messages state + the new user message.
     const historyForApi = [...messages, userMsg];
 
     const botResponseContent = await generateResponse(historyForApi, textToSend);
@@ -585,3 +593,4 @@ export default function ChatbotBuilder() {
     </div>
   );
 }
+
