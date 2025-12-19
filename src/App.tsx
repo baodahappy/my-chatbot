@@ -119,15 +119,7 @@ const parseBotMessage = (content: string) => {
 
 // --- Main Application ---
 export default function ChatbotBuilder() {
-  const [config, setConfig] = useState<BotConfig>(() => {
-    try {
-      const saved = localStorage.getItem('bot_config');
-      return saved ? JSON.parse(saved) : DEFAULT_CONFIG;
-    } catch (e) {
-      return DEFAULT_CONFIG;
-    }
-  });
-
+  const [config, setConfig] = useState<BotConfig>(DEFAULT_CONFIG);
   const [messages, setMessages] = useState<Message[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [input, setInput] = useState("");
