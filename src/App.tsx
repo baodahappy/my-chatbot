@@ -43,7 +43,8 @@ const DEFAULT_CONFIG: BotConfig = {
   knowledgeBase: "You will only provide responses based on the user's health concerns and the provided knowledge base.",
   provider: 'gemini', 
   model: 'gemini-2.5-flash', 
-  apiKey: "AIzaSyB4tw7I-gJE4YrMyO42enuUdnCHwsPoGr4", 
+  // ... inside DEFAULT_CONFIG
+  apiKey: import.meta.env.VITE_API_KEY || "",
   googleFormLink: "https://docs.google.com/forms/d/e/1FAIpQLSdZePJdg8y8lxpiOctjuYycFUX3Iz_Ge1spdjIsgVCJZnx_gA/viewform?usp=pp_url&entry.50030800=user&entry.2131352910=bot&entry.132734065=ID" 
 };
 
