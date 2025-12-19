@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Send, Settings, MessageSquare, User, Bot, Trash2, FileText, X, Eye, 
-  Link as LinkIcon, AlertTriangle, CheckCircle, Search, ExternalLink, 
+  Send, Settings, MessageSquare, Bot, X, Eye, 
+  Link as LinkIcon, Search, ExternalLink, 
   Loader2, Hash, Upload, Sparkles, Brain, Coffee, Zap, Smile, 
   MessageCircle, Image as ImageIcon 
 } from 'lucide-react';
@@ -35,17 +35,16 @@ type BotConfig = {
 };
 
 // --- Default Configuration ---
-// PASTE YOUR KEYS HERE BEFORE DEPLOYING TO MAKE THEM PUBLIC
 const DEFAULT_CONFIG: BotConfig = {
-  name: "SupportBot",
+  name: "HealthBot",
   themeColor: "blue",
   botIcon: "bot",
-  systemPrompt: "You are a helpful customer support assistant.",
-  knowledgeBase: "Our return policy allows returns within 30 days.",
+  systemPrompt: "You are a health chatbot that provides tailored messages to users. \n\nIMPORTANT: You can present clickable options to the user. To do this, end your message with the options separated by a pipe symbol '|' inside curly braces '{}'. \nExample: 'Would you like to know about flu or mental health? {Flue | Mental health}'\n\nAlways keep your responses concise and friendly.",
+  knowledgeBase: "You will only provide responses based on the user's health concerns and the provided knowledge base.",
   provider: 'gemini', 
-  model: 'gemini-2.5-flash', // Default set to the working 2.5 model
-  apiKey: "", 
-  googleFormLink: "" 
+  model: 'gemini-2.5-flash', 
+  apiKey: "AIzaSyB4tw7I-gJE4YrMyO42enuUdnCHwsPoGr4", 
+  googleFormLink: "https://docs.google.com/forms/d/e/1FAIpQLSdZePJdg8y8lxpiOctjuYycFUX3Iz_Ge1spdjIsgVCJZnx_gA/viewform?usp=pp_url&entry.50030800=user&entry.2131352910=bot&entry.132734065=ID" 
 };
 
 // --- Helper Components ---
@@ -86,6 +85,23 @@ const BotAvatar = ({ icon, className }: { icon: string, className?: string }) =>
   return icons[icon] || <Bot className={className} />;
 };
 
+// --- Helper: Parse Options from Message ---
+// Looks for {Option 1 | Option 2} at the end of the string
+const parseBotMessage = (content: string) => {
+  const optionRegex = /\{([^{}]+)\}$/; 
+  const match = content.match(optionRegex);
+  
+  if (match) {
+    const optionsStr = match[1];
+    // Split by pipe, trim whitespace
+    const options = optionsStr.split('|').map(o => o.trim());
+    // Remove the options syntax from the display text
+    const cleanContent = content.replace(optionRegex, '').trim();
+    return { cleanContent, options };
+  }
+  return { cleanContent: content, options: [] };
+};
+
 // --- Main Application ---
 export default function ChatbotBuilder() {
   const [config, setConfig] = useState<BotConfig>(() => {
@@ -103,7 +119,7 @@ export default function ChatbotBuilder() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'config' | 'logs'>('config');
   const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Change to false for production!
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   const [sheetStatus, setSheetStatus] = useState<{msg: string, type: 'success' | 'error' | 'loading'} | null>(null);
   const [keyStatus, setKeyStatus] = useState<{msg: string, type: 'success' | 'error' | 'loading'} | null>(null);
   const [sessionId, setSessionId] = useState("");
@@ -124,7 +140,6 @@ export default function ChatbotBuilder() {
     localStorage.setItem('bot_config', JSON.stringify(config));
   }, [config]);
 
-  // Ensure we switch to the correct default model when provider changes
   useEffect(() => {
     if (config.provider === 'openai' && config.model.includes('gemini')) {
       setConfig(prev => ({ ...prev, model: 'gpt-3.5-turbo' }));
@@ -278,23 +293,31 @@ export default function ChatbotBuilder() {
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: input, timestamp: Date.now() };
+  const handleSend = async (textOverride?: string) => {
+    const textToSend = typeof textOverride === 'string' ? textOverride : input;
+    if (!textToSend.trim()) return;
+
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: textToSend, timestamp: Date.now() };
     setMessages(prev => [...prev, userMsg]);
-    setInput("");
+    if (!textOverride) setInput("");
     setIsLoading(true);
-    const botResponseContent = await generateResponse(messages, input);
+    
+    // We pass 'messages' (old history) + new message to context context if needed, 
+    // but typically we rely on the backend or just append the new user message to history for the API call.
+    // Here we will just use the previous messages state + the new user message.
+    const historyForApi = [...messages, userMsg];
+
+    const botResponseContent = await generateResponse(historyForApi, textToSend);
     const botMsg: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: botResponseContent, timestamp: Date.now() };
     setMessages(prev => [...prev, botMsg]);
     setIsLoading(false);
-    await saveToGoogleSheets(userMsg.content, botMsg.content);
+    await saveToGoogleSheets(textToSend, botResponseContent);
   };
 
   return (
     <div className="flex h-screen bg-gray-50 text-slate-900 font-sans overflow-hidden">
       {!isPreviewMode && (
-        <div className={`${isSidebarOpen ? 'w-full md:w-[450px]' : 'w-0'} flex-shrink-0 bg-white border-r border-gray-200 transition-all duration-300 flex flex-col z-20 absolute md:relative h-full shadow-2xl md:shadow-none`}>
+        <div className={`${isSidebarOpen ? 'w-full md:w-[450px] border-r' : 'w-0'} flex-shrink-0 bg-white border-gray-200 transition-all duration-300 flex flex-col z-20 absolute md:relative h-full shadow-2xl md:shadow-none overflow-hidden`}>
           <div className="p-6 border-b border-gray-100 flex justify-between items-center">
              <div className="flex gap-4">
                 <button onClick={() => setActiveTab('config')} className={`pb-2 text-sm font-semibold border-b-2 ${activeTab === 'config' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Config</button>
@@ -490,26 +513,70 @@ export default function ChatbotBuilder() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-white">
-            {messages.length === 0 && <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60"><MessageSquare size={48} className="mb-4 text-gray-300" /><p className="text-lg font-medium">Hello! I am {config.name}.</p></div>}
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                {msg.role === 'assistant' && (
-                  <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white mr-2 overflow-hidden ${theme.primary}`}>
-                    <BotAvatar icon={config.botIcon} className="w-5 h-5" />
-                  </div>
-                )}
-                <div className={`max-w-[85%] md:max-w-[70%] p-4 rounded-2xl shadow-sm text-sm md:text-base leading-relaxed ${msg.role === 'user' ? 'bg-gray-800 text-white rounded-br-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}>
-                  {msg.content}
+            
+            {/* --- CONVERSATION STARTERS (When Empty) --- */}
+            {messages.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                <MessageSquare size={48} className="mb-4 text-gray-300 opacity-60" />
+                <p className="text-lg font-medium opacity-60">Hello! I am {config.name}.</p>
+                <p className="text-sm opacity-50 mb-8">How can I help you today?</p>
+                
+                <div className="flex flex-wrap justify-center gap-2 max-w-md">
+                  <button 
+                    onClick={() => handleSend("Hi, how are you?")}
+                    className="px-4 py-2 bg-white border border-gray-200 rounded-full text-sm text-slate-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-all shadow-sm"
+                  >
+                    Hi, how are you? 👋
+                  </button>
                 </div>
               </div>
-            ))}
+            )}
+
+            {/* --- MESSAGE LIST --- */}
+            {messages.map((msg) => {
+              // Parse options if it's a bot message
+              const { cleanContent, options } = msg.role === 'assistant' 
+                ? parseBotMessage(msg.content) 
+                : { cleanContent: msg.content, options: [] };
+
+              return (
+                <div key={msg.id} className={`flex flex-col w-full ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                  <div className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {msg.role === 'assistant' && (
+                      <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white mr-2 overflow-hidden ${theme.primary}`}>
+                        <BotAvatar icon={config.botIcon} className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div className={`max-w-[85%] md:max-w-[70%] p-4 rounded-2xl shadow-sm text-sm md:text-base leading-relaxed ${msg.role === 'user' ? 'bg-gray-800 text-white rounded-br-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}>
+                      {cleanContent}
+                    </div>
+                  </div>
+
+                  {/* --- RENDER MULTIPLE CHOICE BUTTONS --- */}
+                  {options.length > 0 && (
+                    <div className="mt-2 ml-10 flex flex-wrap gap-2">
+                      {options.map((option, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSend(option)}
+                          className="px-3 py-1.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-full border border-blue-200 hover:bg-blue-100 transition-colors"
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
             {isLoading && <div className="flex justify-start w-full"><div className="bg-gray-100 p-4 rounded-2xl rounded-bl-none flex items-center gap-2">Loading...</div></div>}
             <div ref={messagesEndRef} />
           </div>
           <div className="p-4 bg-white border-t border-gray-200">
             <div className="relative flex items-center gap-2">
               <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSend()} placeholder="Type a message..." className={`flex-1 p-4 pr-12 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:bg-white transition-all ${theme.ring}`} disabled={isLoading} />
-              <button onClick={handleSend} disabled={isLoading || !input.trim()} className={`absolute right-2 p-2 rounded-lg transition-all ${input.trim() ? `${theme.text} hover:bg-gray-100` : 'text-gray-300'}`}><Send size={20} /></button>
+              <button onClick={() => handleSend()} disabled={isLoading || !input.trim()} className={`absolute right-2 p-2 rounded-lg transition-all ${input.trim() ? `${theme.text} hover:bg-gray-100` : 'text-gray-300'}`}><Send size={20} /></button>
             </div>
           </div>
         </div>
