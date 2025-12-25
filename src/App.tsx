@@ -275,41 +275,33 @@ export default function ChatbotBuilder() {
     } catch (err) { console.error("Failed to save to sheet:", err); }
   };
 
-  const generateResponse = async (history: Message[], userMessage: string) => {
-    // PRIORITIZE .ENV KEY, FALLBACK TO CONFIG KEY
-    const envKey = import.meta.env.VITE_API_KEY || "";
-    
-    // Fix: Use logical OR to pick the key that exists. 
-    // If envKey is empty string (falsy), it picks config.apiKey.
-    const finalKey = envKey || config.apiKey;
-
-    if (!finalKey) return "⚠️ Error: Please enter a valid API Key.";
+const generateResponse = async (history: Message[], userMessage: string) => {
+    // We no longer need the API key here!
     
     const fullSystemPrompt = `${config.systemPrompt}\nCONTEXT/KNOWLEDGE BASE:\n${config.knowledgeBase}`;
-    const cleanKey = finalKey.trim();
 
     try {
-      if (config.provider === 'openai') {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cleanKey}` },
-          body: JSON.stringify({ model: config.model, messages: [{ role: "system", content: fullSystemPrompt }, ...history, { role: "user", content: userMessage }] })
-        });
-        const data = await response.json();
-        if (data.error) return `❌ OpenAI Error: ${data.error.message}`;
-        return data.choices?.[0]?.message?.content || "❌ Error: Empty response.";
-      } else {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${cleanKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: fullSystemPrompt + "\nUser: " + userMessage }] }] })
-        });
-        const data = await response.json();
-        if (data.error) return `❌ Gemini Error: ${data.error.message}`;
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || "❌ Error: Empty response.";
-      }
+      // Call OUR OWN backend instead of Google directly
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          // We pass the context info to our backend
+          history: [{ role: "system", content: fullSystemPrompt }, ...history], 
+          message: userMessage,
+          model: config.model 
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.error) return `❌ Server Error: ${data.error}`;
+      
+      // The backend returns the exact same structure as Google
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "❌ Error: Empty response.";
+
     } catch (error: any) { 
-        return `❌ Network Error: ${error.message}`; 
+        return `❌ Connection Error: ${error.message}`; 
     }
   };
 
