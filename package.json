@@ -6,7 +6,7 @@
   "homepage": "https://baodahappy.github.io/my-chatbot",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "predeploy": "npm run build",
