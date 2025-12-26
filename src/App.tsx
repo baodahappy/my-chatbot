@@ -38,29 +38,44 @@ type BotConfig = {
 const DEFAULT_CONFIG: BotConfig = {
   name: "HealthBot",
   themeColor: "emerald",
-  botIcon: "brain",
-  systemPrompt: `You are a helpful health assistant that provides tailored messages to users. Your goal is to gather information before giving advice.
+  botIcon: "bot",
+  systemPrompt: `You are a helpful health assistant that provides tailored messages to users. Your goal is to gather relevant user information before giving advice.
+  
+  STYLE GUIDELINES:
+  - Be CONCISE and CLEAR. Avoid long paragraphs. Use bullet points.
+  - Base your answers strictly on the provided Context/Knowledge Base.
 
-  RESPONSE GUIDELINES:
-  1. **Greeting:** If the user says "Hi" or "Start", welcome them and ask how they are doing today. Wait for user reply. Don't provide options yet.
+  INTERACTION FLOW:
+  1. **Topic Selection:** The user will enter this conversation having already selected a topic (Flu Info, Mental Health, etc.) via the static menu.
+  2. **Demographic Collection (CRITICAL):** - When the user selects a topic, DO NOT provide advice immediately.
+     - You MUST ask for their **Age Group**, **Gender**, and **Race/Ethnicity** to provide a tailored response.
+     - You can ask these one by one or together. Use button options to make it easy.
+     - Example: "To provide the best guidance, please select your age group: {Under 18 | 18-64 | 65+}"
+  3. **Final Response:**
+     - Once you have the demographic info, provide the specific advice from the Knowledge Base for that group.
+     - End with: {Start Over | Ask another question}
 
-  2. **Based on what they reply to the greetings, ALWAYS end this specific message with: {Flu Info | Mental Health | General Advice}
-  
-  2. **Drill Down:** If the user picks a topic (e.g., "Flu Info"), give a brief summary. Then, ask if they want Prevention tips or Symptoms. End that message with: {Prevention Tips | Symptoms | Vaccine Locations}
-  
-  3. **Open-Ended:** If the user asks a specific question like "Why does my head hurt?", just answer normally with text. DO NOT use curly braces/buttons for complex questions.
-  
-  4. **Ending:** If the conversation seems over, ask if they need anything else. End with: {No, I'm good | Ask another question}
-  
   FORMATTING RULE:
   Only use the {Option A | Option B} format when you want the user to click a button. Otherwise, just speak plain text.`,
+  
+  // UPDATED KNOWLEDGE BASE: Placeholder data for Flu/Mental Health
   knowledgeBase: "You will only provide responses based on the user's health concerns and the provided knowledge base.",
+  [FLU INFORMATION]
+  - General: The flu is a contagious respiratory illness caused by influenza viruses.
+  - Age 65+: High risk of complications. CDC recommends high-dose flu vaccines. Early treatment with antivirals is crucial.
+  - Children (Under 18): Symptoms can be severe. Emergency warning signs include fast breathing or bluish lips.
+  - Racial Disparities: Data shows that Black and Hispanic groups often have lower vaccination rates due to access barriers. Tailored advice: Seek community health centers for free access.
+  
+    [MENTAL HEALTH]
+  - General: Mental health includes emotional, psychological, and social well-being.
+  - Men: Statistically less likely to seek help. Focus on "strength in seeking support." Common signs: irritability, anger.
+  - Women: Higher rates of depression/anxiety diagnoses. Focus on work-life balance and hormonal health factors.
+  - Youth (18-29): High prevalence of anxiety. coping: limit social media, peer support groups.
+  `,
+  
   provider: 'gemini', 
   model: 'gemini-2.5-flash', 
-  // SECURE FIX: This reads the key from your local .env file.
-  // When you run 'npm run deploy', it bakes the key into the website without showing it in the source code.
-  // NOTE: Uncomment the line below when running locally in Vite!
-  // IMPORTANT: LOCALLY, UNCOMMENT THE LINE BELOW TO READ FROM .ENV
+
   apiKey: import.meta.env.VITE_API_KEY || "", 
   googleFormLink: "https://docs.google.com/forms/d/e/1FAIpQLSdZePJdg8y8lxpiOctjuYycFUX3Iz_Ge1spdjIsgVCJZnx_gA/viewform?usp=pp_url&entry.50030800=user&entry.2131352910=bot&entry.132734065=ID" 
 };
@@ -117,9 +132,39 @@ const parseBotMessage = (content: string) => {
   return { cleanContent: content, options: [] };
 };
 
+// --- NEW: Static Logic Layer (No API) ---
+const getStaticResponse = (input: string): string | null => {
+  const lowerInput = input.toLowerCase().trim();
+
+  // 1. Initial Greeting Trigger
+  if (['hi', 'hello', 'start', 'hi, how are you?'].some(w => lowerInput.includes(w))) {
+    return "Hello! I am your health assistant. How are you feeling today? {Good | Bad}";
+  }
+
+  // 2. Feeling Good Path
+  if (lowerInput === 'good' || lowerInput === 'great' || lowerInput === 'fine') {
+    return "I'm glad to hear that! 😊 Since you're doing well, I can share some general wellness tips. What are you interested in? {Mental Health | Flu Prevention | General Health}";
+  }
+
+  // 3. Feeling Bad Path
+  if (lowerInput === 'bad' || lowerInput === 'not good' || lowerInput === 'terrible') {
+    return "I'm sorry to hear you aren't feeling well. 💙 I'm here to help guide you. What seems to be the main concern? {Mental Health | Flu Symptoms | Other}";
+  }
+
+  return null;
+};
+
 // --- Main Application ---
 export default function ChatbotBuilder() {
-  const [config, setConfig] = useState<BotConfig>(DEFAULT_CONFIG);
+  const [config, setConfig] = useState<BotConfig>(() => {
+    try {
+      const saved = localStorage.getItem('bot_config');
+      return saved ? JSON.parse(saved) : DEFAULT_CONFIG;
+    } catch (e) {
+      return DEFAULT_CONFIG;
+    }
+  });
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [input, setInput] = useState("");
@@ -181,9 +226,9 @@ export default function ChatbotBuilder() {
   };
 
   const checkAvailableModels = async () => {
-    // FOR LOCAL DEV: Uncomment the line below to use .env
-    // const envKey = import.meta.env.VITE_API_KEY;
-    const envKey = ""; // Placeholder for preview environment
+    // ⚠️ LOCALLY: Uncomment the line below to read from .env
+    // const envKey = import.meta.env.VITE_API_KEY || "";
+    const envKey = ""; 
     const currentKey = config.apiKey || envKey;
 
     if (!currentKey) {
@@ -275,33 +320,42 @@ export default function ChatbotBuilder() {
     } catch (err) { console.error("Failed to save to sheet:", err); }
   };
 
-const generateResponse = async (history: Message[], userMessage: string) => {
-    // We no longer need the API key here!
+  const generateResponse = async (history: Message[], userMessage: string) => {
+    // ⚠️ LOCALLY: Uncomment the import below to use .env
+    // const envKey = import.meta.env.VITE_API_KEY || "";
+    const envKey = "";
+    
+    // Fix: Use logical OR to pick the key that exists. 
+    // If envKey is empty string (falsy), it picks config.apiKey.
+    const finalKey = envKey || config.apiKey;
+
+    if (!finalKey) return "⚠️ Error: Please enter a valid API Key.";
     
     const fullSystemPrompt = `${config.systemPrompt}\nCONTEXT/KNOWLEDGE BASE:\n${config.knowledgeBase}`;
+    const cleanKey = finalKey.trim();
 
     try {
-      // Call OUR OWN backend instead of Google directly
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          // We pass the context info to our backend
-          history: [{ role: "system", content: fullSystemPrompt }, ...history], 
-          message: userMessage,
-          model: config.model 
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.error) return `❌ Server Error: ${data.error}`;
-      
-      // The backend returns the exact same structure as Google
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || "❌ Error: Empty response.";
-
+      if (config.provider === 'openai') {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cleanKey}` },
+          body: JSON.stringify({ model: config.model, messages: [{ role: "system", content: fullSystemPrompt }, ...history, { role: "user", content: userMessage }] })
+        });
+        const data = await response.json();
+        if (data.error) return `❌ OpenAI Error: ${data.error.message}`;
+        return data.choices?.[0]?.message?.content || "❌ Error: Empty response.";
+      } else {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${cleanKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: fullSystemPrompt + "\nUser: " + userMessage }] }] })
+        });
+        const data = await response.json();
+        if (data.error) return `❌ Gemini Error: ${data.error.message}`;
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || "❌ Error: Empty response.";
+      }
     } catch (error: any) { 
-        return `❌ Connection Error: ${error.message}`; 
+        return `❌ Network Error: ${error.message}`; 
     }
   };
 
@@ -313,10 +367,22 @@ const generateResponse = async (history: Message[], userMessage: string) => {
     setMessages(prev => [...prev, userMsg]);
     if (!textOverride) setInput("");
     setIsLoading(true);
-    
-    const historyForApi = [...messages, userMsg];
 
-    const botResponseContent = await generateResponse(historyForApi, textToSend);
+    // --- STATIC CHECK ---
+    const staticReply = getStaticResponse(textToSend);
+    let botResponseContent = "";
+
+    if (staticReply) {
+      // Use static reply, do NOT call API
+      botResponseContent = staticReply;
+      // Simulate small delay for realism
+      await new Promise(r => setTimeout(r, 600)); 
+    } else {
+      // Use AI
+      const historyForApi = [...messages, userMsg];
+      botResponseContent = await generateResponse(historyForApi, textToSend);
+    }
+
     const botMsg: Message = { id: (Date.now() + 1).toString(), role: 'assistant', content: botResponseContent, timestamp: Date.now() };
     setMessages(prev => [...prev, botMsg]);
     setIsLoading(false);
@@ -593,4 +659,3 @@ const generateResponse = async (history: Message[], userMessage: string) => {
     </div>
   );
 }
-
