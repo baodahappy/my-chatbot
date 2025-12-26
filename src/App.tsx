@@ -84,9 +84,9 @@ const DEFAULT_CONFIG: BotConfig = {
   provider: 'gemini', 
   model: 'gemini-2.5-flash', 
 
-  // NOTE: When using Vercel Backend, this frontend key is mostly unused for chat.
-  // It is only used if you use the "Check Key" button for debugging.
-  apiKey: import.meta.env.VITE_API_KEY || "", 
+  // NOTE: The API Key is now stored securely in Vercel Environment Variables.
+  // This field is left empty on the frontend.
+  apiKey: "", 
 
   googleFormLink: "https://docs.google.com/forms/d/e/1FAIpQLSdZePJdg8y8lxpiOctjuYycFUX3Iz_Ge1spdjIsgVCJZnx_gA/viewform?usp=pp_url&entry.50030800=user&entry.2131352910=bot&entry.132734065=ID" 
 };
