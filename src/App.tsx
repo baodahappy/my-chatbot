@@ -409,7 +409,7 @@ export default function ChatbotBuilder() {
     await saveToGoogleSheets(textToSend, botResponseContent);
   };
 
-  // --- Logic to check if chat is ended ---
+   // --- Logic to check if chat is ended ---
   const isChatEnded = messages.length > 0 && 
     messages[messages.length - 1].role === 'assistant' && 
     messages[messages.length - 1].content.includes("Thank you for chatting with us today");
@@ -591,7 +591,7 @@ export default function ChatbotBuilder() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col relative bg-gray-100">
+      <div className="flex-1 flex flex-col relative bg-gray-100 h-full overflow-hidden">
         <div className="absolute top-4 right-4 z-20 flex gap-2">
           {!isPreviewMode ? (
             <Button variant="secondary" onClick={() => setIsPreviewMode(true)} icon={Eye} className="shadow-lg bg-white">Preview</Button>
@@ -602,7 +602,7 @@ export default function ChatbotBuilder() {
         {!isSidebarOpen && !isPreviewMode && (
           <button onClick={() => setIsSidebarOpen(true)} className="absolute top-4 left-4 z-10 bg-white p-2 rounded-md shadow-md hover:bg-gray-50 text-gray-600 md:hidden"><Settings size={20}/></button>
         )}
-        <div className={`flex-1 flex flex-col ${isPreviewMode ? 'max-w-3xl mx-auto w-full border-x border-gray-200 shadow-2xl my-0 md:my-8 rounded-none md:rounded-xl overflow-hidden' : 'w-full'}`}>
+        <div className={`flex-1 flex flex-col ${isPreviewMode ? 'max-w-3xl mx-auto w-full border-x border-gray-200 shadow-2xl my-0 md:my-8 rounded-none md:rounded-xl overflow-hidden' : 'w-full h-full'}`}>
           <div className={`h-16 flex items-center justify-between px-6 bg-white border-b border-gray-200`}>
             <div className="flex items-center gap-3">
               {/* --- DYNAMIC AVATAR --- */}
