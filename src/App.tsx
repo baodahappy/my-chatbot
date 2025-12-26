@@ -257,13 +257,12 @@ export default function ChatbotBuilder() {
   };
 
   const checkAvailableModels = async () => {
-    // ⚠️ LOCALLY: Uncomment the line below to read from .env
-    // const envKey = import.meta.env.VITE_API_KEY || "";
-    const envKey = ""; 
-    const currentKey = config.apiKey || envKey;
+    // ⚠️ Note: This check only works if you have a local key for debugging.
+    // In production, the key is hidden on the server.
+    const currentKey = config.apiKey;
 
     if (!currentKey) {
-      setKeyStatus({msg: "⚠️ Paste an API Key first.", type: 'error'});
+      setKeyStatus({msg: "⚠️ No Debug API Key provided in config.", type: 'error'});
       return;
     }
     setKeyStatus({msg: "Checking API Key...", type: 'loading'});
@@ -351,42 +350,32 @@ export default function ChatbotBuilder() {
     } catch (err) { console.error("Failed to save to sheet:", err); }
   };
 
+   // --- UPDATED GENERATE RESPONSE: Uses Vercel Backend ---
   const generateResponse = async (history: Message[], userMessage: string) => {
-    // ⚠️ LOCALLY: Uncomment the import below to use .env
-    // const envKey = import.meta.env.VITE_API_KEY || "";
-    const envKey = "";
-    
-    // Fix: Use logical OR to pick the key that exists. 
-    // If envKey is empty string (falsy), it picks config.apiKey.
-    const finalKey = envKey || config.apiKey;
-
-    if (!finalKey) return "⚠️ Error: Please enter a valid API Key.";
-    
     const fullSystemPrompt = `${config.systemPrompt}\nCONTEXT/KNOWLEDGE BASE:\n${config.knowledgeBase}`;
-    const cleanKey = finalKey.trim();
 
     try {
-      if (config.provider === 'openai') {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cleanKey}` },
-          body: JSON.stringify({ model: config.model, messages: [{ role: "system", content: fullSystemPrompt }, ...history, { role: "user", content: userMessage }] })
-        });
-        const data = await response.json();
-        if (data.error) return `❌ OpenAI Error: ${data.error.message}`;
-        return data.choices?.[0]?.message?.content || "❌ Error: Empty response.";
-      } else {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${cleanKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: fullSystemPrompt + "\nUser: " + userMessage }] }] })
-        });
-        const data = await response.json();
-        if (data.error) return `❌ Gemini Error: ${data.error.message}`;
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || "❌ Error: Empty response.";
-      }
+      // Call YOUR Vercel Backend instead of Google directly
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          history: [{ role: "system", content: fullSystemPrompt }, ...history], 
+          message: userMessage, 
+          model: config.model 
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.error) return `❌ Error: ${data.error}`;
+      
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || 
+             data.choices?.[0]?.message?.content || 
+             "❌ Error: Empty response from server.";
+
     } catch (error: any) { 
-        return `❌ Network Error: ${error.message}`; 
+        return `❌ Connection Error: ${error.message}`; 
     }
   };
 
@@ -409,7 +398,7 @@ export default function ChatbotBuilder() {
       // Simulate small delay for realism
       await new Promise(r => setTimeout(r, 600)); 
     } else {
-      // Use AI
+      // Use AI - via backend
       const historyForApi = [...messages, userMsg];
       botResponseContent = await generateResponse(historyForApi, textToSend);
     }
