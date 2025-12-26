@@ -39,43 +39,50 @@ const DEFAULT_CONFIG: BotConfig = {
   name: "HealthBot",
   themeColor: "emerald",
   botIcon: "bot",
-  systemPrompt: `You are a helpful health assistant that provides tailored messages to users. Your goal is to gather relevant user information before giving advice.
+  systemPrompt: `You are a helpful health assistant that provides tailored messages to users. Your goal is to gather relevant user information before giving advice You will only provide responses based on the user's health concerns and the provided knowledge base.
   
   STYLE GUIDELINES:
   - Be CONCISE and CLEAR. Avoid long paragraphs. Use bullet points.
   - Base your answers strictly on the provided Context/Knowledge Base.
 
   INTERACTION FLOW:
-  1. **Topic Selection:** The user will enter this conversation having already selected a topic (Flu Info, Mental Health, etc.) via the static menu.
+  1. **Topic Selection:** The user will enter this conversation having already selected a topic (Flu Info, Mental Health) via the static menu.
   2. **Demographic Collection (CRITICAL):** - When the user selects a topic, DO NOT provide advice immediately.
      - You MUST ask for their **Age Group**, **Gender**, and **Race/Ethnicity** to provide a tailored response.
-     - You can ask these one by one or together. Use button options to make it easy.
+     - You ask these one by one. Use button options to make it easy.
      - Example: "To provide the best guidance, please select your age group: {Under 18 | 18-64 | 65+}"
-  3. **Final Response:**
-     - Once you have the demographic info, provide the specific advice from the Knowledge Base for that group.
-     - End with: {Start Over | Ask another question}
-
+  3. **Final Response & Graphic:** - Provide the specific advice.
+     - Select ONE image from the LIBRARY below that best fits the user's demographic and topic.
+     - Append the image code at the very end of your message in this exact format: [[IMAGE:URL]]
+     - End with the closing text: "Thank you for chatting with us today. Please remember that this information is for educational purposes only and does not replace professional medical advice. If you have urgent concerns, please contact a healthcare provider. Take care!"
+  
+  GRAPHICS LIBRARY (Choose one):
+  - Flu + Children/Youth: https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=500&auto=format&fit=crop&q=60 (Teddy Bear/Care)
+  - Flu + Adults/Seniors: https://images.unsplash.com/photo-1584036561566-b937517d6961?w=500&auto=format&fit=crop&q=60 (Vaccine/Prevention)
+  - Mental Health (General): https://images.unsplash.com/photo-1493836512294-502baa1986e2?w=500&auto=format&fit=crop&q=60 (Calm/Peace)
+  - Mental Health (Men): https://images.unsplash.com/photo-1480455624313-e29b44bbfde1?w=500&auto=format&fit=crop&q=60 (Man thinking)
+  
   FORMATTING RULE:
-  Only use the {Option A | Option B} format when you want the user to click a button. Otherwise, just speak plain text.`,
+  Use {Option A | Option B} for buttons. Use [[IMAGE:URL]] for images.`,
+
+  // 👇 UPDATED KNOWLEDGE BASE: Placeholder data for Flu/Mental Health
+  // NOTE: This must be PLAIN TEXT. Do not paste URLs (links) here; the bot cannot browse the internet.
+  // Instead, copy the text content from a website (like CDC.gov) and paste it below.
   
-  // UPDATED KNOWLEDGE BASE: Placeholder data for Flu/Mental Health
-  knowledgeBase: "You will only provide responses based on the user's health concerns and the provided knowledge base.",
+  knowledgeBase: `
   [FLU INFORMATION]
-  - General: The flu is a contagious respiratory illness caused by influenza viruses.
-  - Age 65+: High risk of complications. CDC recommends high-dose flu vaccines. Early treatment with antivirals is crucial.
-  - Children (Under 18): Symptoms can be severe. Emergency warning signs include fast breathing or bluish lips.
-  - Racial Disparities: Data shows that Black and Hispanic groups often have lower vaccination rates due to access barriers. Tailored advice: Seek community health centers for free access.
+  - General: The flu is a contagious respiratory illness.
+  - Age 65+: High risk. Recommendations: High-dose vaccine, antivirals.
+  - Children: Warning signs include fast breathing, bluish lips.
   
-    [MENTAL HEALTH]
-  - General: Mental health includes emotional, psychological, and social well-being.
-  - Men: Statistically less likely to seek help. Focus on "strength in seeking support." Common signs: irritability, anger.
-  - Women: Higher rates of depression/anxiety diagnoses. Focus on work-life balance and hormonal health factors.
-  - Youth (18-29): High prevalence of anxiety. coping: limit social media, peer support groups.
+  [MENTAL HEALTH]
+  - General: Includes emotional and social well-being.
+  - Men: Less likely to seek help. Signs: Irritability.
+  - Youth: High anxiety prevalence. Tips: Limit social media.
   `,
-  
+
   provider: 'gemini', 
   model: 'gemini-2.5-flash', 
-
   apiKey: import.meta.env.VITE_API_KEY || "", 
   googleFormLink: "https://docs.google.com/forms/d/e/1FAIpQLSdZePJdg8y8lxpiOctjuYycFUX3Iz_Ge1spdjIsgVCJZnx_gA/viewform?usp=pp_url&entry.50030800=user&entry.2131352910=bot&entry.132734065=ID" 
 };
@@ -122,35 +129,60 @@ const BotAvatar = ({ icon, className }: { icon: string, className?: string }) =>
 const parseBotMessage = (content: string) => {
   const optionRegex = /\{([^{}]+)\}$/; 
   const match = content.match(optionRegex);
+  let cleanContent = content;
+  let options: string[] = [];
   
   if (match) {
     const optionsStr = match[1];
-    const options = optionsStr.split('|').map(o => o.trim());
-    const cleanContent = content.replace(optionRegex, '').trim();
-    return { cleanContent, options };
+    options = optionsStr.split('|').map(o => o.trim());
+    cleanContent = content.replace(optionRegex, '').trim();
   }
-  return { cleanContent: content, options: [] };
+  return { cleanContent, options };
 };
 
-// --- NEW: Static Logic Layer (No API) ---
+// --- NEW Helper: Render Text with Images ---
+const renderMessageContent = (content: string) => {
+  // Regex to find [[IMAGE:url]]
+  const imageRegex = /\[\[IMAGE:(.*?)\]\]/g;
+  const parts = content.split(imageRegex);
+  
+  // If no image, return text
+  if (parts.length === 1) return <div className="whitespace-pre-wrap">{content}</div>;
+
+  return (
+    <div className="whitespace-pre-wrap">
+      {parts.map((part, index) => {
+        // Even indices are text, Odd indices are URLs (captured by group)
+        if (index % 2 === 1) {
+          return (
+            <img 
+              key={index} 
+              src={part.trim()} // Trim whitespace to be safe
+              alt="Health Info" 
+              className="mt-3 mb-1 rounded-lg w-full max-w-sm border border-gray-200 shadow-sm" 
+              onError={(e) => (e.currentTarget.style.display = 'none')} // Hide if broken
+            />
+          );
+        }
+        return <span key={index}>{part}</span>;
+      })}
+    </div>
+  );
+};
+
+// --- STATIC LOGIC LAYER ---
 const getStaticResponse = (input: string): string | null => {
   const lowerInput = input.toLowerCase().trim();
 
-  // 1. Initial Greeting Trigger
-  if (['hi', 'hello', 'start', 'hi, how are you?'].some(w => lowerInput.includes(w))) {
+  if (['hi', 'hello', 'start', 'hi, how are you?'].some(w => lowerInput === w)) {
     return "Hello! I am your health assistant. How are you feeling today? {Good | Bad}";
   }
-
-  // 2. Feeling Good Path
-  if (lowerInput === 'good' || lowerInput === 'great' || lowerInput === 'fine') {
-    return "I'm glad to hear that! 😊 Since you're doing well, I can share some general wellness tips. What are you interested in? {Mental Health | Flu Prevention | General Health}";
+  if (['good', 'great', 'fine', 'okay', 'i am good'].some(w => lowerInput.includes(w))) {
+    return "I'm glad to hear that! 😊 Since you're doing well, I can share some general wellness tips. What are you interested in? {Flu Info | Mental Health | General Advice}";
   }
-
-  // 3. Feeling Bad Path
-  if (lowerInput === 'bad' || lowerInput === 'not good' || lowerInput === 'terrible') {
-    return "I'm sorry to hear you aren't feeling well. 💙 I'm here to help guide you. What seems to be the main concern? {Mental Health | Flu Symptoms | Other}";
+  if (['bad', 'not good', 'terrible', 'sick', 'sad'].some(w => lowerInput.includes(w))) {
+    return "I'm sorry to hear you aren't feeling well. 💙 I'm here to help guide you. What seems to be the main concern? {Flu Info | Mental Health | General Advice}";
   }
-
   return null;
 };
 
@@ -389,6 +421,11 @@ export default function ChatbotBuilder() {
     await saveToGoogleSheets(textToSend, botResponseContent);
   };
 
+  // --- Logic to check if chat is ended ---
+  const isChatEnded = messages.length > 0 && 
+    messages[messages.length - 1].role === 'assistant' && 
+    messages[messages.length - 1].content.includes("Thank you for chatting with us today");
+
   return (
     <div className="flex h-screen bg-gray-50 text-slate-900 font-sans overflow-hidden">
       {!isPreviewMode && (
@@ -623,7 +660,8 @@ export default function ChatbotBuilder() {
                       </div>
                     )}
                     <div className={`max-w-[85%] md:max-w-[70%] p-4 rounded-2xl shadow-sm text-sm md:text-base leading-relaxed ${msg.role === 'user' ? 'bg-gray-800 text-white rounded-br-none' : 'bg-gray-100 text-gray-800 rounded-bl-none'}`}>
-                      {cleanContent}
+                      {/* --- RENDER MESSAGE WITH IMAGES --- */}
+                      {renderMessageContent(cleanContent)}
                     </div>
                   </div>
 
@@ -650,8 +688,22 @@ export default function ChatbotBuilder() {
           </div>
           <div className="p-4 bg-white border-t border-gray-200">
             <div className="relative flex items-center gap-2">
-              <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSend()} placeholder="Type a message..." className={`flex-1 p-4 pr-12 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:bg-white transition-all ${theme.ring}`} disabled={isLoading} />
-              <button onClick={() => handleSend()} disabled={isLoading || !input.trim()} className={`absolute right-2 p-2 rounded-lg transition-all ${input.trim() ? `${theme.text} hover:bg-gray-100` : 'text-gray-300'}`}><Send size={20} /></button>
+              <input 
+                type="text" 
+                value={input} 
+                onChange={(e) => setInput(e.target.value)} 
+                onKeyDown={(e) => e.key === 'Enter' && !isLoading && !isChatEnded && handleSend()} 
+                placeholder={isChatEnded ? "Conversation ended." : "Type a message..."} 
+                className={`flex-1 p-4 pr-12 rounded-xl bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:bg-white transition-all ${theme.ring} ${isChatEnded ? 'opacity-50 cursor-not-allowed' : ''}`} 
+                disabled={isLoading || isChatEnded} 
+              />
+              <button 
+                onClick={() => handleSend()} 
+                disabled={isLoading || !input.trim() || isChatEnded} 
+                className={`absolute right-2 p-2 rounded-lg transition-all ${input.trim() && !isChatEnded ? `${theme.text} hover:bg-gray-100` : 'text-gray-300'} ${isChatEnded ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <Send size={20} />
+              </button>
             </div>
           </div>
         </div>
